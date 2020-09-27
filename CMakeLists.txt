@@ -27,6 +27,10 @@ add_definitions(
 
 link_libraries(m)
 
+if(CMAKE_BUILD_TYPE STREQUAL Release)
+    message(WARNING "Compiler optimization enabled. Results may be different from excepted.")
+endif()
+
 add_executable(btest btest.c bits.c decl.c tests.c btest.h bits.h)
 add_executable(ishow ishow.c)
 add_executable(fshow fshow.c)

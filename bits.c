@@ -248,56 +248,16 @@ int getByte(int x, int n) {
  *   Rating: 3
  */
 int logicalShift(int x, int n) {
-  // 8 ops. I **REALLY** want subtract.
+  // 6 ops.
 
   // The most straight approach is to mask out dangling sign when shifting.
   // But generate mask it self also need logical right shift 0xffffffff, so we encountered a loop.
-  // However for masking, we can generate it in another way: left shift 1 and minus 1.
-  // eg. (1 << 5) - 1 = 0b11111, to make low t bit 1, we need to shift left t...
-  // Well, for most cases. This approach doesn't work when t is 32, because left shift 32 is UB,
-  // and many CPUs refuse to give intuitive result - clear out bits and return 0.
-  // Anyway, we can always do it manually. when t is 32, we want a mask 0xffffffff to preserve all the bits.
-  // If we can set all bits when t is 32, and keep all bits unchanged unless, we are done.
-  // Noticing that t never go beyond 32, so if we shift t right 5 bits, then it will be 1 for 32 and 0 for other.
-  // To set everything conditionally, we need OR, so our goal is 0xffffffff(-1) for m = 32 and 0x0 unless.
-  // And everything connected. just negate (t >> 5), OR the mask, then AND the arithmetic shift result.
-  // Let's write it down.
+  // However for masking, we can generate it in another way: right shift 0x80000000 and negate.
+  // In this way the 1 at sign bit will spread n + 1 high bits,
+  // and we can shift left 1 to make it satisfies our requirement.
 
-//  int t = 32 - n;
-//  return (x >> n) & ((((1 << t) - 1)) | (-(t >> 5)));
-
-  // Still not finished, because we don't have subtract. But '-a' can be rewritten as '~a + 1', so by using more
-  // operators, we can finish the task.
-
-  // 11 ops, 3 more just for workaround about subtract :(
-
-  int t = 33 + (~n);
-  return (x >> n) & ((((1 << t) + (~0))) | (((~(t >> 5))) + 1));
-
-  // However, there's always concerns about UBs, some machines cry for that,
-  // and some people are just paranoids. So let's make a UB-free approach.
-
-  // An easy but dirty method goes below. (1 << t) - 1 can be anything when t = 32, so we simply reuse r to add it to t.
-  // this is equivalent to minus 1 from t when t is 32, prevented left shift 32.
-
-  // 12 ops. One more.
-//   int t = 33 + (~n);
-//   int r = ((~(t >> 5))) + 1;
-//   t += r;
-//   return (x >> n) & ((((1 << t) + (~0))) | r);
-
-  // But I want to try a different way. If we know the number is positive or negative, we can do
-  // both cases easily. So let's do both. In positive case arithmetic and logical shift is equivalent.
-  // In negative case, we shift sign and digits differently. For digits, just mask out sign bit.
-  // For sign, we can shift 1 from another side, and this works amazingly - bits to shift always falls into valid range.
-  // Then we build a binary selector to emulate condition. The selector should be 0xffffffff for one case
-  // and 0x0 for another. Then use formula (f_case & selector) | (0_case & ~selector) the work is done.
-
-  // 14 ops, Expensive, but interesting.
-//    int resultPositive = x >> n;
-//    int resultNegative = ((x & ~(1 << 31)) >> n) | (1 << (32 + (~n)));
-//    int resultSelector = x >> 31;
-//    return (resultPositive & ~resultSelector) | (resultNegative & resultSelector);
+  // not that left shift 32 bits is UB, so we can't simplify it.
+  return (x >> n) & (~(((1 << 31) >> n) << 1));
 }
 /*
  * bitCount - returns count of number of 1's in word
@@ -307,8 +267,10 @@ int logicalShift(int x, int n) {
  *   Rating: 4
  */
 int bitCount(int x) {
-  // __builtin_popcount by GCC, standardized in C++20 as std::popcount. Even got hardware opcode.
+  // 30 ops,  17 if we can use all constants
 
+  // __builtin_popcount by GCC, standardized in C++20 as std::popcount. Even got hardware opcode.
+  //
   // Classic question has classic solution.
   // We treat the x as a packed 32x1bit vector, then do a SIMD-like operation to add nearby numbers.
   // Specifically, shift x to make even bits to odd places, and add the even masked version together.
@@ -317,7 +279,6 @@ int bitCount(int x) {
   // and we are done.
   // Following code do the equivalent, but optimized to use less ops.
 
-  // 30 ops,  17 if we can use all constants
   int n_0x1111 = (0x11 << 8) | 0x11;
   int n_0x11111111 = (n_0x1111 << 16) | n_0x1111;
   int n_0x33333333 = (n_0x11111111 << 1) + n_0x11111111;
@@ -340,13 +301,14 @@ int bitCount(int x) {
  *   Rating: 4
  */
 int bang(int x) {
+  // 5 ops
+
   // At least one of x and -x is negative, unless x is 0.
   // OR x and -x, we got sign bit 1 for !0 and 0 for 0.
   // Then we right shift to spread the sign.
   // For !0, we got 0xffffffff, for 0, we got 0x0.
   // Add 1, and we are done.
 
-  // 5 ops
   return ((x | (~x + 1)) >> 31) + 1;
 }
 /*
@@ -356,9 +318,10 @@ int bang(int x) {
  *   Rating: 1
  */
 int tmin(void) {
+  // 1 op. Why here? I already used it before.
+
   // No comment.
 
-  // 1 op. Why here? I already used it before.
   return 1 << 31;
 }
 /*
@@ -371,18 +334,17 @@ int tmin(void) {
  *   Rating: 2
  */
 int fitsBits(int x, int n) {
+  // 8 ops.
+
   // Check if 0 <= i < 2^n is easy. We just shift right to clear low bits,
   // and check if the left is 0.
   // So we add 2^(n-1) to x to make smallest representable negative number 0,
   // and biggest representable positive number 2^n - 1.
   // But this approach doesn't work when n is 32 - however, anything we got should
   // fit in 32 bit, so just blindly return 1 is ok.
-  // 8 ops.
-//  int t = (x + (1 << (n + (~0)))) >> n;
-//  return ((((t | (~t + 1)) >> 31) & 1) ^ 1) | (n >> 5);
+
   return (!((x + (1 << (n + (~0)))) >> n)) | (n >> 5);
 }
-
 /*
  * divpwr2 - Compute x/(2^n), for 0 <= n <= 30
  *  Round toward zero
@@ -392,6 +354,8 @@ int fitsBits(int x, int n) {
  *   Rating: 2
  */
 int divpwr2(int x, int n) {
+  // 11 ops.
+
   // right arithmetic shift do what we want. Well, sort of.
   // We need to change round rule For negative case.
   // That is, if there's remainder, we add 1 to result.
@@ -400,7 +364,6 @@ int divpwr2(int x, int n) {
   // detect if n is 0. If both n and remainder is not 0, and we are dealing with a negative,
   // then add 1 to result.
 
-  // 11 ops.
   return (x >> n) + ((!((!(x << (33 + (~n)))) | (!n))) & (x >> 31));
 }
 /*
@@ -411,9 +374,10 @@ int divpwr2(int x, int n) {
  *   Rating: 2
  */
 int negate(int x) {
+  // 2 ops. Really, why ask me now after I used before??
+
   // Trivial.
 
-  // 2 ops. Really, why ask me now after I used before??
   return (~x) + 1;
 }
 /*
@@ -424,9 +388,10 @@ int negate(int x) {
  *   Rating: 3
  */
 int isPositive(int x) {
+  // 4 ops.
+
   // It's easy to check if x >= 0 and if x != 0. Combine them together.
 
-  // 4 ops.
   return !((x >> 31) | (!x));
 }
 /*
@@ -437,13 +402,14 @@ int isPositive(int x) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
+  // 13 ops. Still more than half.
+
   // We can split LessOrEqual into less and equal.
   // For equal, XOR is more reliable and suitable than arithmetic operations to check identity, so let's use it.
   // For less, if x and y have same sign, then a subtract tells everything in its sign bit.
   // If they have different signs, then check x's sign: A negative is always less than a positive.
   // Combine the result in different cases, and we are done.
 
-  // 13 ops.
   int xor = x ^ y;
   int different = xor >> 31;
   return (!xor) | (((((x + (~y) + 1) & (~different)) | (x & different)) >> 31) & 1);
@@ -456,20 +422,22 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4
  */
 int ilog2(int x) {
+  // 25 ops.
+
   // __builtin_clz by GCC, standardized in C++20 as std::countl_zero
   // Again a classic question. We use bisection method.
   // First detect if we have 16 zeros, if there is, trim it.
   // Then 8, 4, 2, 1, and we are done.
 
-  // 25 ops.
   int q;
+  // sorry, no !=, I can't simplify it.
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "Simplify"
   int r = (!!(x >> 16)) << 4; x = x >> r;
-  q = (!!(x >>  8)) << 3; x = x >> q; r = r | q;
-  q = (!!(x >>  4)) << 2; x = x >> q; r = r | q;
-  q = (!!(x >>  2)) << 1; x = x >> q; r = r | q;
-  r |= (x >> 1);
+      q = (!!(x >>  8)) << 3; x = x >> q; r = r | q;
+      q = (!!(x >>  4)) << 2; x = x >> q; r = r | q;
+      q = (!!(x >>  2)) << 1; x = x >> q; r = r | q;
+      r |= (x >> 1);
 #pragma clang diagnostic pop
 
   return r;
@@ -486,11 +454,12 @@ int ilog2(int x) {
  *   Rating: 2
  */
 unsigned float_neg(unsigned uf) {
+  // 3 ops. Feels good with all my operator and constant friends. :)
+
   // That is mainly detecting nan.
   // First strip out sign, then nan is bigger than anything other in int representation.
   // And what's left is easy.
 
-  // 3 ops.
   return ((uf & 0x7fffffff) > 0x7f800000) ? uf : (uf ^ 0x80000000);
 }
 /*
@@ -503,7 +472,7 @@ unsigned float_neg(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
-  // 29 ops, rounding uses a lot
+  // 29 ops, rounding uses a lot. Should have better approach
 
   int sign;
   unsigned abs_x;
