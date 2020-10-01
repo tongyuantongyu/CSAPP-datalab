@@ -402,17 +402,16 @@ int isPositive(int x) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  // 13 ops. Still more than half.
+  // 11 ops.
 
-  // We can split LessOrEqual into less and equal.
-  // For equal, XOR is more reliable and suitable than arithmetic operations to check identity, so let's use it.
-  // For less, if x and y have same sign, then a subtract tells everything in its sign bit.
-  // If they have different signs, then check x's sign: A negative is always less than a positive.
+  // LessOrEqual is just !Greater.
+  // To determine if x > y, we should split into two cases.
+  // If x and y have same sign, then a subtract tells everything in its sign bit.
+  // If they have different signs, then check y's sign: A negative is always less than a positive.
   // Combine the result in different cases, and we are done.
 
-  int xor = x ^ y;
-  int different = xor >> 31;
-  return (!xor) | (((((x + (~y) + 1) & (~different)) | (x & different)) >> 31) & 1);
+  int different = (x ^ y) >> 31;
+  return !((((y + (~x) + 1) & (~different)) | (y & different)) >> 31);
 }
 /*
  * ilog2 - return floor(log base 2 of x), where x > 0
@@ -424,10 +423,10 @@ int isLessOrEqual(int x, int y) {
 int ilog2(int x) {
   // 25 ops.
 
-  // __builtin_clz by GCC, standardized in C++20 as std::countl_zero
+  // like __builtin_clz by GCC
   // Again a classic question. We use bisection method.
-  // First detect if we have 16 zeros, if there is, trim it.
-  // Then 8, 4, 2, 1, and we are done.
+  // First detect if high 16 bit is zero. If not, we can divide it by 2^16,
+  // then 8, 4, 2, 1, and we are done.
 
   int q;
   // sorry, no !=, I can't simplify it.
@@ -472,7 +471,9 @@ unsigned float_neg(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
-  // 29 ops, rounding uses a lot. Should have better approach
+  // 26 ops, rounding uses a lot. Should have better approach
+
+  // common method.
 
   int sign;
   unsigned abs_x;
@@ -517,20 +518,16 @@ unsigned float_i2f(int x) {
       abs_x = abs_x >> shift;
       // carry
       abs_x += carry;
-      // if we go over 2
-      if (abs_x & 0x01000000) {
-        lo += 1;
-      }
     } else {
       // shift right, the easy case.
       abs_x = abs_x << (23 - lo);
     }
 
     // apply bias to exponent
-    exponent = lo + 127;
+    exponent = lo + 126;
 
     // assemble the result
-    return (sign & 0x80000000) | (exponent << 23) | (abs_x & 0x007fffff);
+    return (sign & 0x80000000) | ((exponent << 23) + abs_x);
   }
 
   // 0 for 0
@@ -549,6 +546,8 @@ unsigned float_i2f(int x) {
  */
 unsigned float_twice(unsigned uf) {
   // 12 ops
+
+  // common method.
 
   int uf_abs = uf & 0x7fffffff;
   int sign = uf & 0x80000000;
