@@ -551,8 +551,6 @@ unsigned float_twice(unsigned uf) {
 
   int uf_abs = uf & 0x7fffffff;
   int sign = uf & 0x80000000;
-  int exp;
-  exp = uf & 0x7f800000;
 
   // nan, return itself
   if (uf_abs > 0x7f800000) {
@@ -560,17 +558,17 @@ unsigned float_twice(unsigned uf) {
   }
 
   // normal number
-  if (exp) {
+  if (uf & 0x7f800000) {
     // multiply 2 will be inf, apply sign
     if (uf_abs >= 0x7f000000) {
       return sign | 0x7f800000;
     }
 
     // normal case, add 1 to exp
-    return (uf & 0x807fffff) | (exp + 0x00800000);
+    return uf + 0x00800000;
   }
 
   // subnormal number, multiply fraction by 2. Carry works automatically.
-  return sign | ((uf & 0x007fffff) << 1);
+  return sign | (uf_abs << 1);
 }
 #pragma clang diagnostic pop
